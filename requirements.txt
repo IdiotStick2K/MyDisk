@@ -1,0 +1,5 @@
+ttkbootstrap==1.9.2
+psutil==5.9.7
+wmi==1.5.1
+matplotlib==3.8.2
+pyperclip==1.9.0
