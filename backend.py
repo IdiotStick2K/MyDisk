@@ -4,6 +4,8 @@ import json
 import sys
 import wmi
 from datetime import datetime
+import tkinter
+from tkinter import messagebox
 
 
 if getattr(sys, "frozen", False):
@@ -37,6 +39,7 @@ print(f"Active Directory: {base_dir}")
 
 def initialize_json_files():
     """Ensure all JSON files exist with defaults."""
+    log_status = True
     for filename, default_data in FILES.items():
         file_path = os.path.join(data_dir, filename)
 
@@ -44,12 +47,25 @@ def initialize_json_files():
             try:
                 with open(file_path, "w") as f:
                     json.dump(default_data, f, indent=4)
+                    if filename == "storage_log.json":
+                        log_status = False
                 print(f"[CREATE] {filename}")
             except Exception as e:
                 print(f"[ERROR] Failed to create {filename}: {e}")
         else:
             print(f"[EXISTS] {filename}")
+    return log_status
             
+'''def send_initjson_message():
+    confirm = messagebox.askyesno(
+        "Your storage log is empty!",
+        f"Would you like to import one?"
+    )
+    if not confirm:
+        return
+    from ui import App
+    open_tools = App.open_tools'''
+
 # ---UTILITY---
 def read_json(file_path, default=None):
     """

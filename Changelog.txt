@@ -1,0 +1,19 @@
+Beta 0.1.5
+- Added ability to click on point on chart for details
+- Added version text
+- Fixed duplicate application processes
+- Added better background process support
+- Prepared for a settings window, currently squashing bugs
+
+Beta 0.2
+- Fixed (hopefully all) issues with background processes.
+- Added settings window.
+- Re-worked "Storage Summary" Window.
+ - Added system wide summary
+ - Added a table view for disk drives.
+ - Added some UI styling to make it look nicer
+- Changed clicking on storage log graph to display all drives from the time select instead of just 1
+- Added ability to import an existing storage json file.
+ - When you first run a new version of the app, it will automatically prompt you to import an old log file.
+ - Prompt also shows up if the app has to create a new storage_log.json in your app data.
+ - You can also access this feature by going to the tools menu
