@@ -5,14 +5,16 @@ import sys
 import wmi
 from datetime import datetime
 
-if getattr(sys, 'frozen', False):
-    # Running as compiled EXE
-    script_dir = os.path.dirname(sys.executable)
-else:
-    # Running as .py script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
 
-os.chdir(script_dir)
+if getattr(sys, "frozen", False):
+    base_dir = os.path.dirname(sys.executable)  
+else:
+    base_dir = os.path.dirname(os.path.abspath(__file__))  
+
+
+data_dir = os.path.join(base_dir, "data")
+os.makedirs(data_dir, exist_ok=True)
+
 
 # Default files
 
@@ -21,31 +23,30 @@ FILES = {
     "drives.json": [],
     "app_config.json": {
         "logging_interval_minutes": 10,
-        "max_log_entries": 10000
+        "max_log_entries": 10000,
+        "background_logging": True
     }
 }
 
-print(f"Active Directory: {os.getcwd()}")
+print("Base dir:", base_dir)
+print("Data dir:", data_dir)
+
+
+print(f"Active Directory: {base_dir}")
 # Initialize files
 
 def initialize_json_files():
-    working_dir = os.getcwd()
-    data_dir = os.path.join(os.getcwd(), "data")
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
-        print(f"[CREATE] {data_dir}")
-    else:
-        print(f"[EXISTS] {data_dir}")
-        
+    """Ensure all JSON files exist with defaults."""
     for filename, default_data in FILES.items():
         file_path = os.path.join(data_dir, filename)
 
-        if not os.path.exists(file_path):
-            print(f"[CREATE] {filename}")
-
-            with open(file_path, "w") as f:
-                json.dump(default_data, f, indent=4)
-
+        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+            try:
+                with open(file_path, "w") as f:
+                    json.dump(default_data, f, indent=4)
+                print(f"[CREATE] {filename}")
+            except Exception as e:
+                print(f"[ERROR] Failed to create {filename}: {e}")
         else:
             print(f"[EXISTS] {filename}")
             
@@ -154,21 +155,21 @@ def get_drive_hardware():
     """
     log_file = os.path.join(os.getcwd(), "data", "drives.json")
     
-    # 1️⃣ Check if file exists
-    if not os.path.exists(log_file):
-        return []  # No data yet
 
-    # 2️⃣ Load JSON safely
+    if not os.path.exists(log_file):
+        return []  
+
+
     try:
         with open(log_file, "r") as f:
             drives = json.load(f)
     except (json.JSONDecodeError, IOError):
         return []
 
-    # 3️⃣ Beautify / clean data
+   
     formatted_drives = []
     for d in drives:
-        # Skip empty entries
+       
         if not d:
             continue
 
@@ -181,7 +182,7 @@ def get_drive_hardware():
             "Media Type": d.get("media_type", "N/A"),
             "Manufacturer": d.get("manufacturer", "Unknown"),
             "Status": d.get("status", "Unknown"),
-            "Size (GB)": f"{d.get('size_gb', 0):,.2f}",  # Comma + 2 decimals
+            "Size (GB)": f"{d.get('size_gb', 0):,.2f}", 
             "Partitions": d.get("partitions", 0),
             "Capabilities": ", ".join(map(str, d.get("capabilities", []))) if d.get("capabilities") else "None"
 
