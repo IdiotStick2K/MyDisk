@@ -10,6 +10,7 @@ I am currently experimenting with background logging. I ran into many issues wit
 
 INFORMATION REGARDING ANALYTICS TRACKING - READ
 I have added analytics tracking, because I am curious how many people use my app! It CAN be opted out of using the settings in the app. You can see all of the code it uses in the source code portion of the repo. My database URL and keys are redacted, but the app can still be used. By design, manually downloading the files will auto-opt you out due to not having API URLs. I use a database to track launch logs with basic metadata like app version and operating system. A database is the best free solution I could come up with and doesn't require advanced web stuff. If you have questions please reach out to me on discord @.idiotstick - I advocate for transparency and this is why I include this information and made opting out very easy, although I would appreciate if you left it on!! All data sent is completely anonymous and can not be traced back to you.
+All the application sends is your operating system and what app version you're on. Thats it. I just made this message so you can get some understanding why there is analytics scripts.
 
 Features:
 Disk info window
