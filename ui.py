@@ -152,7 +152,7 @@ class App:
             btn = tb.Button(btn_frame, text=text, bootstyle=style, width=20, command=func)
             btn.pack(pady=10)
 
-        ver_lbl = tb.Label(self.root, text="Version: Beta 0.2.0", font=("Helvetica", 7, "italic"))
+        ver_lbl = tb.Label(self.root, text="Version: Beta 0.2.1", font=("Helvetica", 7, "italic"))
         ver_lbl.pack(pady=20, side="bottom")
         ver_lbl.pack_configure(anchor="center")
 
@@ -495,8 +495,15 @@ class App:
             bootstyle="primary", onvalue=True, offvalue=False
         ).pack(anchor="w", pady=10)
 
+        bg_var2 = tk.BooleanVar(value=self.settings.get("analytics_tracking", True))
+        tb.Checkbutton(
+            frame, text="Anonymous Analytics Tracking", variable=bg_var2,
+            bootstyle="primary", onvalue=True, offvalue=False
+        ).pack(anchor="w", pady=10)
+
         def write_settings():
             self.settings["background_logging"] = bg_var.get()
+            self.settings["analytics_tracking"] = bg_var2.get()
             self._save_settings()
             # Apply immediately: start or stop logger depending on new value
             if self.settings["background_logging"]:

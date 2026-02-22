@@ -5,7 +5,7 @@ Beta 0.1.5
 - Added better background process support
 - Prepared for a settings window, currently squashing bugs
 
-Beta 0.2
+Beta 0.2.0
 - Fixed (hopefully all) issues with background processes.
 - Added settings window.
 - Re-worked "Storage Summary" Window.
@@ -17,3 +17,6 @@ Beta 0.2
  - When you first run a new version of the app, it will automatically prompt you to import an old log file.
  - Prompt also shows up if the app has to create a new storage_log.json in your app data.
  - You can also access this feature by going to the tools menu
+
+Beta 0.2.1
+- Added anonymous analytic logging with ability to opt out

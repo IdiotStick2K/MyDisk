@@ -26,9 +26,13 @@ FILES = {
     "app_config.json": {
         "logging_interval_minutes": 10,
         "max_log_entries": 10000,
-        "background_logging": True
+        "background_logging": True,
+        "analytics_tracking": True
     }
 }
+
+APP_VERSION = "Beta 0.2.6"
+
 
 print("Base dir:", base_dir)
 print("Data dir:", data_dir)
@@ -55,18 +59,17 @@ def initialize_json_files():
         else:
             print(f"[EXISTS] {filename}")
     return log_status
-            
-'''def send_initjson_message():
-    confirm = messagebox.askyesno(
-        "Your storage log is empty!",
-        f"Would you like to import one?"
-    )
-    if not confirm:
-        return
-    from ui import App
-    open_tools = App.open_tools'''
+        
 
 # ---UTILITY---
+
+def launch_log():
+    return
+
+
+def startup_logs():
+    return
+
 def read_json(file_path, default=None):
     """
     Reads JSON from a file. Returns `default` if file doesn't exist or is invalid.

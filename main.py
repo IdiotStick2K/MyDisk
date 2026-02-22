@@ -91,6 +91,20 @@ except Exception:
 
 background_logging = settings.get("background_logging", True)
 
+from analytics import log_launch
+
+def analytics_startup():
+    try:
+        log_launch({
+            "first_run": False
+        })
+    except Exception:
+        return
+
+analytics_permission = settings.get("analytics_tracking")
+if analytics_permission:
+    analytics_startup()
+
 
 from ui import App
 import background
