@@ -1,6 +1,9 @@
 # ui.py
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
+from ttkbootstrap.style import Style
+from ttkbootstrap.themes.user import USER_THEMES
+from ttkbootstrap.style import ThemeDefinition
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from backend import get_drive_hardware, get_drive_capacity, load_storage_logs, log_data_once
@@ -15,6 +18,7 @@ import pystray
 import sys
 import threading
 import shutil
+from themes import MYDISK_THEMES
 
 # ── Path helpers 
 if getattr(sys, "frozen", False):
@@ -51,17 +55,40 @@ def write_json(file_path, data):
         return False
 
 
+
+USER_THEMES.update(MYDISK_THEMES)
+
+def get_theme():
+    config_file = os.path.join(os.getcwd(), "data", "app_config.json")
+    read_json(config_file, default=None)
+
+    return read_json(config_file, default=None)
+
+def send_theme():
+    get_active_theme = get_theme()
+    active_theme = get_active_theme["theme"]
+
+
+    print(active_theme)
+    return active_theme
+
 # ── App 
 class App:
     def __init__(self, settings=None):
-        self.root = tb.Window(themename="cosmo")
+
+
+        theme = send_theme()
+        print(f"Active theme {theme}")
+
+        self.settings = settings if settings is not None else self._load_settings()
+        self.root = tb.Window(themename=self.settings.get("theme", "cosmo"))
         self.root.title("MyDisk")
         self.root.geometry("800x600")
         # Hide immediately; main.py controls initial visibility
         self.root.withdraw()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        self.settings = settings if settings is not None else self._load_settings()
+        
         self.tray_icon = None
 
         self.buttons = {
@@ -74,6 +101,8 @@ class App:
 
         self.create_main_menu()
 
+
+
     # ── Settings 
     def _load_settings(self):
         settings_file = os.path.join(os.getcwd(), "data", "app_config.json")
@@ -81,6 +110,8 @@ class App:
             "background_logging": True,
             "logging_interval_minutes": 10,
             "max_log_entries": 10000,
+            "analytics_tracking": True,
+            "theme": "Light",
         }
         return read_json(settings_file, default=default)
 
@@ -152,7 +183,7 @@ class App:
             btn = tb.Button(btn_frame, text=text, bootstyle=style, width=20, command=func)
             btn.pack(pady=10)
 
-        ver_lbl = tb.Label(self.root, text="Version: Beta 0.2.1", font=("Helvetica", 7, "italic"))
+        ver_lbl = tb.Label(self.root, text="Version: Beta 0.2.2", font=("Helvetica", 7, "italic"))
         ver_lbl.pack(pady=20, side="bottom")
         ver_lbl.pack_configure(anchor="center")
 
@@ -240,33 +271,79 @@ class App:
         logs, timestamps, used_history = load_storage_logs()
     
         fig, ax = plt.subplots(figsize=(8, 5))
+        fig.subplots_adjust(bottom=0.28)  # make room for legend below chart
+    
+        # Maps matplotlib line object → (drive_name, [global_timestamp_indices])
+        line_index_map = {}
     
         if not logs:
             ax.text(0.5, 0.5, "No log data available.", ha="center", va="center", transform=ax.transAxes)
         else:
-            lines = {}
+            color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+            drive_colors = {drive: color_cycle[i % len(color_cycle)]
+                            for i, drive in enumerate(used_history.keys())}
+    
             for drive_name, used_values in used_history.items():
-                line, = ax.plot(timestamps, used_values, marker="o", label=drive_name, picker=5)
-                lines[drive_name] = line
+                color = drive_colors[drive_name]
+                first_segment = True
+    
+                x_buf, y_buf, idx_buf = [], [], []
+    
+                def flush(x_buf, y_buf, idx_buf, first_segment):
+                    if not x_buf:
+                        return first_segment
+                    label = drive_name if first_segment else "_nolegend_"
+                    line, = ax.plot(x_buf, y_buf, marker="o", label=label,
+                                    color=color, picker=5)
+                    # Store the global log indices this segment covers
+                    line_index_map[line] = (drive_name, idx_buf[:])
+                    return False
+    
+                for i, val in enumerate(used_values):
+                    if val is not None:
+                        x_buf.append(timestamps[i])
+                        y_buf.append(val)
+                        idx_buf.append(i)
+                    else:
+                        first_segment = flush(x_buf, y_buf, idx_buf, first_segment)
+                        x_buf, y_buf, idx_buf = [], [], []
+    
+                flush(x_buf, y_buf, idx_buf, first_segment)  # flush final segment
+    
             ax.set_xlabel("Time")
             ax.set_ylabel("Used (GB)")
             ax.set_title("Drive Usage Over Time")
-            ax.legend()
             fig.autofmt_xdate()
+    
+            ax.legend(loc="best", frameon=True, fontsize=9)
     
         # --- Event handler for clicks ---
         def on_pick(event):
             line = event.artist
-            ind = event.ind[0]  # index of the clicked point
-            snapshot = logs[ind]  # use index to match timestamp
+            if line not in line_index_map:
+                return
     
-            text_lines = [f"Snapshot timestamp: {snapshot['timestamp']}"]
-            for d in snapshot.get("capacity", []):
-                text_lines.append(
-                    f"{d['Drive']}: Used {round(d['Used (MB)']/1024,2)} GB, "
-                    f"Free {round(d['Free (MB)']/1024,2)} GB, "
-                    f"Usage {d['Usage (%)']}%"
-                )
+            drive_name, global_indices = line_index_map[line]
+            seg_point_idx = event.ind[0]  # index within this segment
+    
+            # Map back to the real log index
+            if seg_point_idx >= len(global_indices):
+                return
+            log_idx = global_indices[seg_point_idx]
+            snapshot = logs[log_idx]
+    
+            text_lines = [f"Snapshot: {snapshot['timestamp']}"]
+            drives_in_snapshot = {d["Drive"]: d for d in snapshot.get("capacity", [])}
+    
+            if not drives_in_snapshot:
+                text_lines.append("No drive data in this snapshot.")
+            else:
+                for drive, d in drives_in_snapshot.items():
+                    text_lines.append(
+                        f"{drive}: Used {round(d['Used (MB)']/1024, 2)} GB, "
+                        f"Free {round(d['Free (MB)']/1024, 2)} GB, "
+                        f"Usage {d['Usage (%)']}%"
+                    )
     
             self.details_text.config(text="\n".join(text_lines))
     
@@ -274,7 +351,6 @@ class App:
         canvas_widget.draw()
         canvas_widget.get_tk_widget().pack(fill="x", expand=True, padx=10, pady=10)
     
-        # Connect the pick event
         fig.canvas.mpl_connect("pick_event", on_pick)
     
         toolbar = NavigationToolbar2Tk(canvas_widget, win)
@@ -293,8 +369,10 @@ class App:
         button_frame.pack(side="bottom", fill="x", pady=10)
         inner_frame = tb.Frame(button_frame)
         inner_frame.pack()
-        tb.Button(inner_frame, text="Refresh", bootstyle="info", command=lambda: self.open_storage_logs(win)).pack(side="left", padx=5)
-        tb.Button(inner_frame, text="Close", bootstyle="secondary", command=win.destroy).pack(side="left", padx=5)
+        tb.Button(inner_frame, text="Refresh", bootstyle="info",
+                  command=lambda: self.open_storage_logs(win)).pack(side="left", padx=5)
+        tb.Button(inner_frame, text="Close", bootstyle="secondary",
+                  command=win.destroy).pack(side="left", padx=5)
         button_frame.pack_configure(anchor="center")
 
     def open_storage_summary(self):
@@ -481,43 +559,88 @@ class App:
     def open_settings(self):
         win = tb.Toplevel(self.root)
         win.title("Settings")
-        win.geometry("800x300")
+        win.geometry("800x600")
 
-        tb.Label(win, text="Settings",                   font=("Helvetica", 16, "bold")).pack(pady=(10, 2))
-        tb.Label(win, text="MyDisk Application Settings", font=("Helvetica", 9, "italic")).pack(pady=(2, 25))
-
+    
+        
+        tb.Label(win, text="Settings", font=("Helvetica", 18, "bold")).pack(pady=(20, 2))
+        tb.Label(win, text="MyDisk Application Settings", font=("Helvetica", 10, "italic"),
+                 bootstyle="secondary").pack(pady=(0, 10))
+        tb.Separator(win, orient="horizontal").pack(fill="x", padx=20, pady=(0, 15))
+    
+       
         frame = tb.Frame(win)
-        frame.pack(fill="both", expand=True, padx=20)
-
+        frame.pack(fill="both", expand=True, padx=40)
+    
+       
+        tb.Label(frame, text="Privacy & Logging", font=("Helvetica", 11, "bold")).pack(anchor="w", pady=(0, 6))
+    
         bg_var = tk.BooleanVar(value=self.settings.get("background_logging", True))
         tb.Checkbutton(
             frame, text="Background Logging", variable=bg_var,
             bootstyle="primary", onvalue=True, offvalue=False
-        ).pack(anchor="w", pady=10)
-
+        ).pack(anchor="w", pady=4)
+    
         bg_var2 = tk.BooleanVar(value=self.settings.get("analytics_tracking", True))
         tb.Checkbutton(
             frame, text="Anonymous Analytics Tracking", variable=bg_var2,
             bootstyle="primary", onvalue=True, offvalue=False
-        ).pack(anchor="w", pady=10)
+        ).pack(anchor="w", pady=4)
+    
+        tb.Separator(frame, orient="horizontal").pack(fill="x", pady=15)
+    
+       
+        tb.Label(frame, text="Appearance", font=("Helvetica", 11, "bold")).pack(anchor="w", pady=(0, 6))
+        tb.Label(frame, text="App Theme", font=("Helvetica", 10)).pack(anchor="w")
+    
+        theme_map = {"Light": "cosmo", "Dark": "mydiskdark", "Obsidian": "mydisk_obsidian"}
+        theme_map_reverse = {v: k for k, v in theme_map.items()}
+    
+        # Determine the currently active theme and pre-select it in the dropdown
+        current_theme_key = self.settings.get("theme", "cosmo")
+        current_theme_label = theme_map_reverse.get(current_theme_key, "Light")
+    
+        theme_var = tk.StringVar(value=current_theme_label)
+        theme_dropdown = tb.Combobox(
+            frame, values=list(theme_map.keys()),
+            textvariable=theme_var, state="readonly", width=20
+        )
+        theme_dropdown.pack(anchor="w", pady=(4, 0))
 
+        tb.Label(frame, text="App may require restart for theme to properply apply", font=("Helvetica", 7, "italic")).pack(anchor="w")
+    
+       
         def write_settings():
             self.settings["background_logging"] = bg_var.get()
             self.settings["analytics_tracking"] = bg_var2.get()
+    
+            selected_label = theme_var.get()
+            new_theme = theme_map.get(selected_label, "cosmo")
+            self.settings["theme"] = new_theme
             self._save_settings()
-            # Apply immediately: start or stop logger depending on new value
+    
+            # Apply theme immediately
+            try:
+                self.root.style.theme_use(new_theme)
+            except Exception as e:
+                print(f"Could not apply theme '{new_theme}': {e}")
+    
+            # Start or stop background logger based on new setting
             if self.settings["background_logging"]:
                 background.start_logger()
             else:
                 background.stop_logger()
-
-        bottom_button_frame = tb.Frame(win)
-        bottom_button_frame.pack(side="bottom", fill="x", pady=10)
-        inner_bottom = tb.Frame(bottom_button_frame)
-        inner_bottom.pack()
-        tb.Button(inner_bottom, text="Save Settings", bootstyle="primary",   command=write_settings).pack(side="left", padx=5)
-        tb.Button(inner_bottom, text="Close",          bootstyle="secondary", command=win.destroy).pack(side="left", padx=5)
-
+    
+       
+        tb.Separator(win, orient="horizontal").pack(fill="x", padx=20, pady=(15, 10))
+    
+        bottom_frame = tb.Frame(win)
+        bottom_frame.pack(side="bottom", pady=(0, 20))
+    
+        tb.Button(bottom_frame, text="Save Settings", bootstyle="primary",
+                  width=16, command=write_settings).pack(side="left", padx=8)
+        tb.Button(bottom_frame, text="Close", bootstyle="secondary",
+                  width=16, command=win.destroy).pack(side="left", padx=8)
 
 if __name__ == "__main__":
     app = App()

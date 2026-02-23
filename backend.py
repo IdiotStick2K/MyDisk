@@ -27,7 +27,8 @@ FILES = {
         "logging_interval_minutes": 10,
         "max_log_entries": 10000,
         "background_logging": True,
-        "analytics_tracking": True
+        "analytics_tracking": True,
+        "theme": "cosmo"
     }
 }
 
@@ -279,25 +280,24 @@ def load_storage_logs(log_file=None):
     Returns:
         logs: list of dicts
         timestamps: list of datetime objects
-        used_history: dict {drive_letter: [used GB values]}
+        used_history: dict {drive_letter: [used GB values per timestamp, None if absent]}
     """
-
     if log_file is None:
         log_file = os.path.join(os.getcwd(), "data", "storage_log.json")
 
     logs = read_json(log_file, default=[])
-
     if not logs:
         return [], [], {}
 
     timestamps = [datetime.fromisoformat(entry["timestamp"]) for entry in logs]
 
-    drive_names = [d["Drive"] for d in logs[0]["capacity"]]
+    # Collect every drive ever seen, not just drives in the first snapshot
+    all_drives = sorted({d["Drive"] for entry in logs for d in entry.get("capacity", [])})
+    used_history = {drive: [] for drive in all_drives}
 
-    used_history = {name: [] for name in drive_names}
     for entry in logs:
-        for d in entry["capacity"]:
-            used_gb = round(d["Used (MB)"] / 1024, 2)  # MB → GB
-            used_history[d["Drive"]].append(used_gb)
+        present = {d["Drive"]: round(d["Used (MB)"] / 1024, 2) for d in entry.get("capacity", [])}
+        for drive in used_history:
+            used_history[drive].append(present.get(drive, None))  # None where drive was absent
 
     return logs, timestamps, used_history
