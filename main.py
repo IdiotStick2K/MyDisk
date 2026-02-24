@@ -1,4 +1,4 @@
-# main.py
+
 import os
 import sys
 import json
@@ -12,6 +12,13 @@ if getattr(sys, "frozen", False):
 else:
     script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
+
+def print_memory_snapshot(top=10):
+    snapshot = tracemalloc.take_snapshot()
+    stats = snapshot.statistics("lineno")
+    print(f"\n── Memory Snapshot (top {top}) ──")
+    for stat in stats[:top]:
+        print(stat)
 
 # Kill any previous instance via PID file 
 PID_FILE = os.path.join(script_dir, "mydisk.pid")

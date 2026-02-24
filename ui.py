@@ -6,11 +6,9 @@ from ttkbootstrap.themes.user import USER_THEMES
 from ttkbootstrap.style import ThemeDefinition
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from backend import get_drive_hardware, get_drive_capacity, load_storage_logs, log_data_once
+from backend import get_drive_hardware, get_drive_capacity, load_storage_logs, log_data_once, storage_log_viewer_window
 import pyperclip
 import background  # import module, not specific functions — so we can call start/stop
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-import matplotlib.pyplot as plt
 import os
 import json
 from PIL import Image
@@ -19,6 +17,7 @@ import sys
 import threading
 import shutil
 from themes import MYDISK_THEMES
+
 
 # ── Path helpers 
 if getattr(sys, "frozen", False):
@@ -135,7 +134,10 @@ class App:
     def on_close(self):
         """Called when the user clicks the window's X button."""
         if self.settings.get("background_logging", True):
-            # Keep process alive; just hide the window
+            # Destroy any open child windows to free their memory
+            for widget in self.root.winfo_children():
+                if isinstance(widget, tb.Toplevel):
+                    widget.destroy()
             self.root.withdraw()
         else:
             # No background mode — exit completely
@@ -183,7 +185,7 @@ class App:
             btn = tb.Button(btn_frame, text=text, bootstyle=style, width=20, command=func)
             btn.pack(pady=10)
 
-        ver_lbl = tb.Label(self.root, text="Version: Beta 0.2.2", font=("Helvetica", 7, "italic"))
+        ver_lbl = tb.Label(self.root, text="Version: Beta 0.3.0", font=("Helvetica", 7, "italic"))
         ver_lbl.pack(pady=20, side="bottom")
         ver_lbl.pack_configure(anchor="center")
 
@@ -254,7 +256,10 @@ class App:
         tb.Button(inner_frame, text="Close",   bootstyle="secondary", command=win.destroy).pack(side="left", padx=5)
         button_frame.pack_configure(anchor="center")
 
+
     def open_storage_logs(self, win=None):
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+        import matplotlib.pyplot as plt
         if win is None or not win.winfo_exists():
             win = tb.Toplevel(self.root)
         else:
@@ -263,100 +268,136 @@ class App:
     
         self._logs_window = win
         win.title("Storage Logs")
-        win.geometry("800x800")
+        win.geometry("950x950")
     
-        header = tb.Label(win, text="Storage Logs", font=("Helvetica", 16, "bold"))
-        header.pack(pady=10)
+        tb.Label(win, text="Storage Logs", font=("Helvetica", 16, "bold")).pack(pady=10)
+    
+        # ── Chart selector buttons
+        btn_frame = tb.Frame(win)
+        btn_frame.pack(fill="x", padx=10, pady=(0, 5))
     
         logs, timestamps, used_history = load_storage_logs()
     
         fig, ax = plt.subplots(figsize=(8, 5))
-        fig.subplots_adjust(bottom=0.28)  # make room for legend below chart
-    
-        # Maps matplotlib line object → (drive_name, [global_timestamp_indices])
         line_index_map = {}
     
-        if not logs:
-            ax.text(0.5, 0.5, "No log data available.", ha="center", va="center", transform=ax.transAxes)
-        else:
-            color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-            drive_colors = {drive: color_cycle[i % len(color_cycle)]
-                            for i, drive in enumerate(used_history.keys())}
+        def draw_chart(mode):
+            ax.cla() 
+            line_index_map.clear()
     
-            for drive_name, used_values in used_history.items():
-                color = drive_colors[drive_name]
-                first_segment = True
+            if not logs:
+                ax.text(0.5, 0.5, "No log data available.", ha="center", va="center", transform=ax.transAxes)
     
-                x_buf, y_buf, idx_buf = [], [], []
+            elif mode == "usage_over_time":
+                color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+                drive_colors = {drive: color_cycle[i % len(color_cycle)]
+                                for i, drive in enumerate(used_history.keys())}
     
-                def flush(x_buf, y_buf, idx_buf, first_segment):
-                    if not x_buf:
-                        return first_segment
-                    label = drive_name if first_segment else "_nolegend_"
-                    line, = ax.plot(x_buf, y_buf, marker="o", label=label,
-                                    color=color, picker=5)
-                    # Store the global log indices this segment covers
-                    line_index_map[line] = (drive_name, idx_buf[:])
-                    return False
+                for drive_name, used_values in used_history.items():
+                    color = drive_colors[drive_name]
+                    first_segment = True
+                    x_buf, y_buf, idx_buf = [], [], []
     
-                for i, val in enumerate(used_values):
-                    if val is not None:
-                        x_buf.append(timestamps[i])
-                        y_buf.append(val)
-                        idx_buf.append(i)
-                    else:
-                        first_segment = flush(x_buf, y_buf, idx_buf, first_segment)
-                        x_buf, y_buf, idx_buf = [], [], []
+                    def flush(x_buf, y_buf, idx_buf, first_segment, drive_name=drive_name, color=color):
+                        if not x_buf:
+                            return first_segment
+                        label = drive_name if first_segment else "_nolegend_"
+                        line, = ax.plot(x_buf, y_buf, marker="o", label=label, color=color, picker=5)
+                        line_index_map[line] = (drive_name, idx_buf[:])
+                        return False
     
-                flush(x_buf, y_buf, idx_buf, first_segment)  # flush final segment
+                    for i, val in enumerate(used_values):
+                        if val is not None:
+                            x_buf.append(timestamps[i])
+                            y_buf.append(val)
+                            idx_buf.append(i)
+                        else:
+                            first_segment = flush(x_buf, y_buf, idx_buf, first_segment)
+                            x_buf, y_buf, idx_buf = [], [], []
+                    flush(x_buf, y_buf, idx_buf, first_segment)
     
-            ax.set_xlabel("Time")
-            ax.set_ylabel("Used (GB)")
-            ax.set_title("Drive Usage Over Time")
-            fig.autofmt_xdate()
+                ax.set_xlabel("Time")
+                ax.set_ylabel("Used (GB)")
+                ax.set_title("Drive Usage Over Time")
+                ax.legend(loc="best", frameon=True, fontsize=9)
+                fig.autofmt_xdate()
     
-            ax.legend(loc="best", frameon=True, fontsize=9)
+            elif mode == "free_space":
+                latest = logs[-1].get("capacity", [])
+                drives = [d["Drive"] for d in latest]
+                free_gb = [round(d["Free (MB)"] / 1024, 2) for d in latest]
+                total_gb = [round(d["Total (MB)"] / 1024, 2) for d in latest]
+                used_gb = [t - f for t, f in zip(total_gb, free_gb)]
     
-        # --- Event handler for clicks ---
+                x = list(range(len(drives)))
+                ax.bar(x, free_gb, label="Free GB", color="#00C8AA")
+                ax.bar(x, used_gb, bottom=free_gb, label="Used GB", color="#FF5252", alpha=0.7)
+                ax.set_xticks(x)
+                ax.set_xticklabels(drives)
+                ax.set_ylabel("GB")
+                ax.set_title("Current Free vs Used Space (Latest Snapshot)")
+                ax.legend(loc="best", frameon=True, fontsize=9)
+    
+            elif mode == "usage_pct":
+                color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+                all_drives = sorted({d["Drive"] for entry in logs for d in entry.get("capacity", [])})
+                drive_colors = {drive: color_cycle[i % len(color_cycle)] for i, drive in enumerate(all_drives)}
+    
+                pct_history = {drive: [] for drive in all_drives}
+                for entry in logs:
+                    present = {d["Drive"]: d["Usage (%)"] for d in entry.get("capacity", [])}
+                    for drive in all_drives:
+                        pct_history[drive].append(present.get(drive, None))
+    
+                for drive_name, pct_values in pct_history.items():
+                    xs = [timestamps[i] for i, v in enumerate(pct_values) if v is not None]
+                    ys = [v for v in pct_values if v is not None]
+                    if xs:
+                        ax.plot(xs, ys, marker="o", label=drive_name,
+                                color=drive_colors[drive_name], picker=5)
+    
+                ax.axhline(y=80, color="#FFD740", linestyle="--", linewidth=1, label="80% warning")
+                ax.axhline(y=90, color="#FF5252", linestyle="--", linewidth=1, label="90% critical")
+                ax.set_xlabel("Time")
+                ax.set_ylabel("Usage (%)")
+                ax.set_ylim(0, 105)
+                ax.set_title("Drive Usage % Over Time")
+                ax.legend(loc="best", frameon=True, fontsize=9)
+                fig.autofmt_xdate()
+    
+            canvas_widget.draw()
+    
+        # ── Pick event 
         def on_pick(event):
             line = event.artist
             if line not in line_index_map:
                 return
-    
             drive_name, global_indices = line_index_map[line]
-            seg_point_idx = event.ind[0]  # index within this segment
-    
-            # Map back to the real log index
+            seg_point_idx = event.ind[0]
             if seg_point_idx >= len(global_indices):
                 return
-            log_idx = global_indices[seg_point_idx]
-            snapshot = logs[log_idx]
+            snapshot = logs[global_indices[seg_point_idx]]
     
             text_lines = [f"Snapshot: {snapshot['timestamp']}"]
-            drives_in_snapshot = {d["Drive"]: d for d in snapshot.get("capacity", [])}
-    
-            if not drives_in_snapshot:
-                text_lines.append("No drive data in this snapshot.")
-            else:
-                for drive, d in drives_in_snapshot.items():
-                    text_lines.append(
-                        f"{drive}: Used {round(d['Used (MB)']/1024, 2)} GB, "
-                        f"Free {round(d['Free (MB)']/1024, 2)} GB, "
-                        f"Usage {d['Usage (%)']}%"
-                    )
-    
+            for d in snapshot.get("capacity", []):
+                text_lines.append(
+                    f"{d['Drive']}: Used {round(d['Used (MB)']/1024, 2)} GB, "
+                    f"Free {round(d['Free (MB)']/1024, 2)} GB, "
+                    f"Usage {d['Usage (%)']}%"
+                )
             self.details_text.config(text="\n".join(text_lines))
     
+        # ── Canvas 
         canvas_widget = FigureCanvasTkAgg(fig, master=win)
         canvas_widget.draw()
         canvas_widget.get_tk_widget().pack(fill="x", expand=True, padx=10, pady=10)
-    
         fig.canvas.mpl_connect("pick_event", on_pick)
     
         toolbar = NavigationToolbar2Tk(canvas_widget, win)
         toolbar.update()
         canvas_widget.get_tk_widget().pack(fill="x", expand=True, padx=10, pady=(0, 10))
     
+        # ── Details panel 
         details_frame = tb.Frame(win)
         details_frame.pack(fill="x", padx=10, pady=10)
         tb.Label(details_frame, text="Point Details", font=("Helvetica", 12, "bold")).pack(anchor="w")
@@ -365,6 +406,7 @@ class App:
         )
         self.details_text.pack(fill="x", pady=5)
     
+        # ── Bottom buttons
         button_frame = tb.Frame(win)
         button_frame.pack(side="bottom", fill="x", pady=10)
         inner_frame = tb.Frame(button_frame)
@@ -373,7 +415,18 @@ class App:
                   command=lambda: self.open_storage_logs(win)).pack(side="left", padx=5)
         tb.Button(inner_frame, text="Close", bootstyle="secondary",
                   command=win.destroy).pack(side="left", padx=5)
-        button_frame.pack_configure(anchor="center")
+    
+        # ── Chart buttons 
+        tb.Label(btn_frame, text="Select chart", font=("Helvetica", 11, "bold")).pack(side="left", padx=4)
+        tb.Button(btn_frame, text="Usage Over Time", bootstyle="info-outline",
+                  command=lambda: draw_chart("usage_over_time")).pack(side="left", padx=4)
+        tb.Button(btn_frame, text="Free Space",      bootstyle="info-outline",
+                  command=lambda: draw_chart("free_space")).pack(side="left", padx=4)
+        tb.Button(btn_frame, text="Usage %",         bootstyle="info-outline",
+                  command=lambda: draw_chart("usage_pct")).pack(side="left", padx=4)
+    
+        # Load default chart
+        draw_chart("usage_over_time")
 
     def open_storage_summary(self):
         win = tb.Toplevel(self.root)
@@ -467,7 +520,7 @@ class App:
     def open_tools(self):
         win = tb.Toplevel(self.root)
         win.title("Tools")
-        win.geometry("800x400")
+        win.geometry("800x600")
         
        
         tb.Label(win, text="Tools", font=("Helvetica", 16, "bold")).pack(pady=(10, 2))
@@ -479,6 +532,7 @@ class App:
 
         # Button functions
         def import_storagelog():
+            
             dest_file = os.path.join(data_dir, "storage_log.json")
 
             selected_file = filedialog.askopenfilename(
@@ -505,7 +559,6 @@ class App:
                 )
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to import file:\n{str(e)}")
-
 
 
         def add_tool_row(button_texts, commands, description, button_styles=None):
@@ -540,8 +593,14 @@ class App:
                 "Makes importing an old storage file easy!\n"
                 "Simply navigate to your old storage file\n"
                 "(MyDisk->dist->MyDisk->data->storage_log.json), select it, and press Open!"
-)
             )
+        )
+
+        add_tool_row(
+            button_texts=["Storage Logs Viewer"],
+            commands=[lambda: storage_log_viewer_window(self)],
+            description="View all storagelog points"
+        )
         
         '''add_tool_row(
             button_texts=["Placeholder Button 1", "Placeholder Button 2"],
@@ -608,31 +667,84 @@ class App:
         theme_dropdown.pack(anchor="w", pady=(4, 0))
 
         tb.Label(frame, text="App may require restart for theme to properply apply", font=("Helvetica", 7, "italic")).pack(anchor="w")
-    
+
+        tb.Separator(frame, orient="horizontal").pack(fill="x", pady=15)
+        tb.Label(frame, text="Logging Interval", font=("Helvetica", 11, "bold")).pack(anchor="w", pady=(0, 6))
+        tb.Label(frame, text="(Minutes)", font=("Helvetica", 7)).pack(anchor="w")
+
+        current_interval = self.settings["logging_interval_minutes"]
+        print(current_interval)
+        interval_entry = tb.Entry(frame, bootstyle="primary", font=("Helvetica", 10), width=10)
+        interval_entry.insert(0, str(current_interval))
+        interval_entry.pack(anchor="w", pady=(0, 6))
+
        
         def write_settings():
-            self.settings["background_logging"] = bg_var.get()
-            self.settings["analytics_tracking"] = bg_var2.get()
-    
+            messages = []
+            errors = []
+        
+            # Background logging
+            old_logging = self.settings.get("background_logging")
+            new_logging = bg_var.get()
+            if new_logging != old_logging:
+                self.settings["background_logging"] = new_logging
+                messages.append(f"✔ Background logging {'enabled' if new_logging else 'disabled'}")
+        
+            # Analytics
+            old_analytics = self.settings.get("analytics_tracking")
+            new_analytics = bg_var2.get()
+            if new_analytics != old_analytics:
+                self.settings["analytics_tracking"] = new_analytics
+                messages.append(f"✔ Analytics tracking {'enabled' if new_analytics else 'disabled'}")
+        
+            # Interval
+            try:
+                interval = int(interval_entry.get())
+                if 1 <= interval <= 600:
+                    if interval != self.settings.get("logging_interval_minutes"):
+                        self.settings["logging_interval_minutes"] = interval
+                        messages.append(f"✔ Logging interval changed to {interval} minutes")
+                        background.stop_logger()
+                        background.start_logger()
+                else:
+                    errors.append("✘ Interval must be between 5 and 600 minutes — not saved")
+            except ValueError:
+                errors.append("✘ Interval must be a whole number — not saved")
+        
+            # Theme
             selected_label = theme_var.get()
             new_theme = theme_map.get(selected_label, "cosmo")
-            self.settings["theme"] = new_theme
+            if new_theme != self.settings.get("theme"):
+                self.settings["theme"] = new_theme
+                self._save_settings()
+                try:
+                    self.root.style.theme_use(new_theme)
+                    messages.append(f"✔ Theme changed to {selected_label}")
+                except Exception as e:
+                    errors.append(f"✘ Could not apply theme '{selected_label}': {e}")
+        
+            # Logger start/stop if logging toggle changed
+            if new_logging != old_logging:
+                if self.settings["background_logging"]:
+                    background.start_logger()
+                else:
+                    background.stop_logger()
+        
             self._save_settings()
-    
-            # Apply theme immediately
-            try:
-                self.root.style.theme_use(new_theme)
-            except Exception as e:
-                print(f"Could not apply theme '{new_theme}': {e}")
-    
-            # Start or stop background logger based on new setting
-            if self.settings["background_logging"]:
-                background.start_logger()
+        
+            # Summary
+            if not messages and not errors:
+                summary_label.config(text="No changes made.", bootstyle="secondary")
             else:
-                background.stop_logger()
-    
-       
+                summary_label.config(
+                    text="\n".join(messages + errors),
+                    bootstyle="danger" if errors else "success"
+                )
+   
         tb.Separator(win, orient="horizontal").pack(fill="x", padx=20, pady=(15, 10))
+
+        summary_label = tb.Label(win, text="", font=("Helvetica", 9), justify="left", anchor="w")
+        summary_label.pack(fill="x", padx=40, pady=(0, 5))
     
         bottom_frame = tb.Frame(win)
         bottom_frame.pack(side="bottom", pady=(0, 20))

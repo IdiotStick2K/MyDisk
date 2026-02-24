@@ -20,3 +20,15 @@ Beta 0.2.0
 
 Beta 0.2.1
 - Added anonymous analytic logging with ability to opt out
+
+Beta 0.2.2
+- Added a working theme selector to the settings menu with 3 themes to pick from
+- Improved support for adding and removing drives, app doesn't work perfectly with removeable drives such as SD cards.
+
+Beta 0.3.0
+- Added 2 new charts to storage logs and a chart selector
+- Settings menu updates:
+  - Added a logging interval setting, this controls how often the background logger runs
+  - Added a message that appears if you change a setting, or put a bad value in a setting box
+- Redid MyDisk logo
+- Added an advanced data viewer for the storage log. View readme for more details, access it from the tools menu!
