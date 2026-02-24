@@ -21,9 +21,12 @@ Disk storage logs
 - View a disk usage history.
 - Ability to change zoom and view different areas of the data.
 - Matplotlib charts for easy data viewing!
+- 3 different charts for more data views
 
 Tools menu
 - Manually take a disk snapshot. Helpful if you want to take a snapshot now instead of waiting the 10 minutes.
+- Import an old storage log file from an existing installation. Useful when updating to a new version.
+- Storage log viewer/manager. You can access this new window from the tools menu! Double click on a timestamp to edit values. 
 
 Other info
 - The application will not take a snapshot if your disks have not changed by at least 50 MB. 
@@ -31,6 +34,5 @@ This is to prevent a massive amount of logs being created when you aren't doing 
 - Many more tools and features will be added in the near future!
 
 Planned features
-- Themes
 - more graphs
 + more quality of life features.
