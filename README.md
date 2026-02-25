@@ -2,37 +2,24 @@
 Thank you for using my app! Currently its very basic, but this is my first attempt at creating a usable, helpful app!
 I will constantly be updating it, so watch the github repo.
 
-HOW TO LAUNCH APP
-Navigate to the dist folder and launch the "MyDisk.exe" file. From there you should see the main menu pop up. If you do not, please submit an issue on the github repository.
+Currently my app only runs on windows 10. Maybe in the future I can add IOS support or linux support.
 
-IMPORTANT
-I am currently experimenting with background logging. I ran into many issues with this, but it does work, it just isn't perfect. When you close the application, it will minimize to your system tray. From there you can right click on the MyDisk icon and you will see open, restart, and exit. Restart and exit are similar, and end the process. Open brings back the UI. If you try and launch the .exe while an instance of the app is in your system tray, it will not work. You must either end the "MyDisk.exe" process in task manager or press exit after right clicking the icon in your system tray.
+HOW TO LAUNCH APP
+If you clone the repository, you can launch the app this way:
+- Download python
+- Download all required libraries from requirements.txt
+- Run Main.py
+If you download a .zip file from the releases section:
+- Extract the zip folder to a location of your choosing
+- You do not have to download any dependencies, they come pre-installed with the .exe!
+-  From here you can either run the "Launcher.vbs' file or navigate to dist>MyDisk>>MyDisk.exe
+-  You can create your own shortcut for MyDisk.exe if you'd like.
 
 INFORMATION REGARDING ANALYTICS TRACKING - READ
-I have added analytics tracking, because I am curious how many people use my app! It CAN be opted out of using the settings in the app. You can see all of the code it uses in the source code portion of the repo. My database URL and keys are redacted, but the app can still be used. By design, manually downloading the files will auto-opt you out due to not having API URLs. I use a database to track launch logs with basic metadata like app version and operating system. A database is the best free solution I could come up with and doesn't require advanced web stuff. If you have questions please reach out to me on discord @.idiotstick - I advocate for transparency and this is why I include this information and made opting out very easy, although I would appreciate if you left it on!! All data sent is completely anonymous and can not be traced back to you.
-All the application sends is your operating system and what app version you're on. Thats it. I just made this message so you can get some understanding why there is analytics scripts.
+You may see scripts like analytics.py, or supabase_client.py. I have intergrated a database into my application, that logs when somebody launches the app.
+I do not take any personal, or sensitive data, all that happens is your app version is taken from config.py as well as a timestamp and is sent to the database I have connected.
+You can easily opt out of theses analytics in the apps settings window! I included this out of pure curiosity about how many people use the app. 
+Another note: Downloading the source code will automatically opt you out of analytics tracking, because I removed my database key and URL from the config.py to prevent abuse.
+If you have any questions about where the data goes or anything else, please DM me on discord! @.idiotstick or email me idiotstickbusiness@gmail.com
 
-Features:
-Disk info window
-- See a breakdown of all mounted storage devices on your PC. You can view stuff such as capacity, model number, firmware version, and a few other things.
 
-Disk storage logs
-- Every 10 minutes, the application will automatically capture a snapshot of all of your mounted devices.
-- View a disk usage history.
-- Ability to change zoom and view different areas of the data.
-- Matplotlib charts for easy data viewing!
-- 3 different charts for more data views
-
-Tools menu
-- Manually take a disk snapshot. Helpful if you want to take a snapshot now instead of waiting the 10 minutes.
-- Import an old storage log file from an existing installation. Useful when updating to a new version.
-- Storage log viewer/manager. You can access this new window from the tools menu! Double click on a timestamp to edit values. 
-
-Other info
-- The application will not take a snapshot if your disks have not changed by at least 50 MB. 
-This is to prevent a massive amount of logs being created when you aren't doing anything, or your computer is caching stuff.
-- Many more tools and features will be added in the near future!
-
-Planned features
-- more graphs
-+ more quality of life features.
