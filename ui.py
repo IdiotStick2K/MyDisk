@@ -11,7 +11,7 @@ import pyperclip
 import background  # import module, not specific functions — so we can call start/stop
 import os
 import json
-from PIL import Image
+
 import pystray
 import sys
 import threading
@@ -120,6 +120,7 @@ class App:
 
     # ── Tray
     def create_tray_icon(self):
+        from PIL import Image
         icon_path = os.path.join(base_dir, "art", "MyDiskLogo.png")
         icon_image = Image.open(icon_path)
         menu = pystray.Menu(
@@ -185,7 +186,7 @@ class App:
             btn = tb.Button(btn_frame, text=text, bootstyle=style, width=20, command=func)
             btn.pack(pady=10)
 
-        ver_lbl = tb.Label(self.root, text="Version: Beta 0.3.0", font=("Helvetica", 7, "italic"))
+        ver_lbl = tb.Label(self.root, text="Version: Beta 0.3.1", font=("Helvetica", 7, "italic"))
         ver_lbl.pack(pady=20, side="bottom")
         ver_lbl.pack_configure(anchor="center")
 
@@ -205,6 +206,9 @@ class App:
 
         header = tb.Label(win, text="Disk Info Window", font=("Helvetica", 16, "bold"))
         header.pack(pady=10)
+
+        tb.Separator(win, orient='horizontal', style='primary').pack(fill="x", pady=2)
+
 
         from backend import list_drive_hardware
         list_drive_hardware()
@@ -232,13 +236,16 @@ class App:
 
         for drive in drives:
             frame = tb.Frame(scrollable_frame)
-            frame.pack(fill="x", padx=5, pady=2)
+            frame.pack(anchor="center", fill="x", padx=5, pady=2)
             drive_text = (
+                f"Name: {drive.get('Name', 'N/A')} | "
                 f"Model: {drive.get('Model', 'N/A')} | "
-                f"Size: {drive.get('Size (GB)', 'N/A')} GB | "
-                f"Serial: {drive.get('Serial', 'N/A')} | "
+                f"Size: {drive.get('Size (GB)', 'N/A')} GB | \n"
+                f"Serial: {drive.get('Serial', 'N/A')} | \n"
+                f"Interface: {drive.get('Interface', 'N/A')} | "
                 f"Firmware Version: {drive.get('Firmware', 'N/A')} | "
-                f"Partitions #: {drive.get('Partitions', 'N/A')}"
+                f"Partitions #: {drive.get('Partitions', 'N/A')} \n"
+                "____________________________________________"
             )
             lbl = tb.Label(frame, text=drive_text, anchor="w")
             lbl.pack(side="left", padx=5)
@@ -246,7 +253,9 @@ class App:
                 frame, text="Copy", bootstyle="secondary",
                 command=lambda t=drive_text: pyperclip.copy(t)
             )
+            
             copy_btn.pack(side="left", padx=10)
+        tb.Separator(win, orient='horizontal', style='primary').pack(fill="x", pady=2)
 
         button_frame = tb.Frame(win)
         button_frame.pack(side="bottom", fill="x", pady=10)
@@ -260,6 +269,8 @@ class App:
     def open_storage_logs(self, win=None):
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
         import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        from backend import linear_regression
         if win is None or not win.winfo_exists():
             win = tb.Toplevel(self.root)
         else:
@@ -284,6 +295,8 @@ class App:
         def draw_chart(mode):
             ax.cla() 
             line_index_map.clear()
+            if hasattr(self, '_forecast_table_label') or 'forecast_table_label' in dir():
+                forecast_table_label.config(text="")
     
             if not logs:
                 ax.text(0.5, 0.5, "No log data available.", ha="center", va="center", transform=ax.transAxes)
@@ -364,6 +377,113 @@ class App:
                 ax.set_title("Drive Usage % Over Time")
                 ax.legend(loc="best", frameon=True, fontsize=9)
                 fig.autofmt_xdate()
+
+            elif mode == "usage_forecast":
+                x_numeric = [mdates.date2num(ts) for ts in timestamps]
+                color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+                drive_colors = {drive: color_cycle[i % len(color_cycle)]
+                    for i, drive in enumerate(used_history.keys())}
+
+                global_last_x = None
+                far_future_rows = []
+
+                for drive_name, used_values in used_history.items():
+                    paired = [(x_numeric[i], v) for i, v in enumerate(used_values) if v is not None]
+                    if len(paired) < 2:
+                        continue
+
+                    xs = [p[0] for p in paired]
+                    raw_ys = [p[1] for p in paired]
+
+                    latest_cap = next(
+                        (d["Total (MB)"] / 1024 for entry in reversed(logs)
+                         for d in entry.get("capacity", []) if d["Drive"] == drive_name),
+                        None
+                    )
+
+
+                    if forecast_mode.get() == "pct" and latest_cap:
+                        ys = [round(v / latest_cap * 100, 2) for v in raw_ys]
+                        y_label  = "Usage (%)"
+                        thresholds = [(80.0, "#FFD740", "80%"), (90.0, "#FF5252", "90%")]
+                    else:
+                        ys = raw_ys
+                        y_label  = "Used (GB)"
+                        thresholds = [
+                            (latest_cap * 0.80 if latest_cap else None, "#FFD740", "80%"),
+                            (latest_cap * 0.90 if latest_cap else None, "#FF5252", "90%"),
+                        ]
+
+                    slope, intercept = linear_regression(xs, ys)
+                    if slope is None:
+                        continue
+
+                    # print(f"{drive_name}: slope={slope:.4f} GB/day, intercept={intercept:.2f}")
+
+                    color = drive_colors[drive_name]
+
+                    real_dates = [mdates.num2date(x) for x in xs]
+                    ax.plot(real_dates, ys, color=color, label=drive_name)
+
+                    last_x = xs[-1]
+                    days_ahead = 365
+                    future_x_numeric = [last_x + i for i in range(0, days_ahead +1)]
+                    future_y = [slope * x + intercept for x in future_x_numeric]
+                    future_dates = [mdates.num2date(x) for x in future_x_numeric]
+
+                    if global_last_x is None or last_x > global_last_x:
+                        global_last_x = last_x
+
+
+                    ax.plot(future_dates, future_y, linestyle="--", color=color, alpha=0.5,
+                            label=f"{drive_name} forecast")
+
+
+                    if slope > 0:
+                        for target, t_color, t_label in thresholds:
+                            if target is None:
+                                continue
+                            if target > ys[-1]:
+                                x_at_target    = (target - intercept) / slope
+                                days_away      = int(x_at_target - last_x)
+                                date_at_target = mdates.num2date(x_at_target)
+                    
+                                if days_away > 365 * 3:  # more than 3 years out
+                                    far_future_rows.append((drive_name, t_label, days_away, date_at_target, slope))
+                                else:
+                                    ax.axvline(x=date_at_target, color=t_color,
+                                               linestyle=":", linewidth=1, alpha=0.7)
+                                    ax.text(date_at_target, target,
+                                            f"{drive_name} {t_label}\n~{days_away}d",
+                                            fontsize=7, color=t_color, va="bottom")
+                if global_last_x is not None:
+                        cutoff = mdates.num2date(global_last_x  + 365)
+                        ax.set_xlim(right=cutoff)
+                
+                ax.set_xlabel("Time")
+                ax.set_ylabel("Used (GB)")
+                ax.set_title("Drive Usage Forecast (365 Days)")
+                ax.legend(loc="best", frameon=True, fontsize=9)
+                fig.autofmt_xdate()
+                ax.set_ylabel(y_label if 'y_label' in dir() else "Used (GB)")
+
+                if far_future_rows:
+                    lines = ["--- Long Range Forecast (>3 years) ---"]
+                    for drive, threshold, days, date, slope in far_future_rows:
+                        yr         = days // 365
+                        mo         = (days % 365) // 30
+                        per_month  = round(slope * 30, 2)
+                        per_year   = round(slope * 365, 2)
+                        unit       = "%" if forecast_mode.get() == "pct" else "GB"
+                        lines.append(
+                            f"  {drive} hits {threshold} in ~{yr}y {mo}mo  ({date.strftime('%Y-%m-%d')})"
+                            f"  |  +{per_month}{unit}/mo  +{per_year}{unit}/yr"
+                        )
+                    forecast_table_label.config(text="\n".join(lines))
+                else:
+                    forecast_table_label.config(text="")
+                                    
+
     
             canvas_widget.draw()
     
@@ -399,12 +519,19 @@ class App:
     
         # ── Details panel 
         details_frame = tb.Frame(win)
-        details_frame.pack(fill="x", padx=10, pady=10)
-        tb.Label(details_frame, text="Point Details", font=("Helvetica", 12, "bold")).pack(anchor="w")
+        details_label = tb.Label(details_frame, text="Point Details", font=("Helvetica", 12, "bold"))
         self.details_text = tb.Label(
             details_frame, text="Click a point on the chart to see details.", anchor="w", justify="left"
         )
-        self.details_text.pack(fill="x", pady=5)
+
+
+        forecast_table_frame = tb.Frame(win)
+        forecast_table_frame.pack(fill="x", padx=10, pady=(0, 5))
+        forecast_table_label = tb.Label(
+            forecast_table_frame, text="", font=("Helvetica", 9),
+            justify="left", anchor="w"
+        )
+        forecast_table_label.pack(fill="x")
     
         # ── Bottom buttons
         button_frame = tb.Frame(win)
@@ -415,18 +542,58 @@ class App:
                   command=lambda: self.open_storage_logs(win)).pack(side="left", padx=5)
         tb.Button(inner_frame, text="Close", bootstyle="secondary",
                   command=win.destroy).pack(side="left", padx=5)
-    
+
+        forecast_mode = tk.StringVar(value="pct")
+        current_mode = {"value": "usage_over_time"} 
+
+
+        def toggle_forecast_mode():
+            if forecast_mode.get() == "pct":
+                forecast_mode.set("gb")
+                forecast_toggle_btn.config(text="Show %")
+            else:
+                forecast_mode.set("pct")
+                forecast_toggle_btn.config(text="Show GB")
+            if current_mode["value"] == "usage_forecast":
+                draw_chart("usage_forecast")
+
+        forecast_toggle_btn = tb.Button(btn_frame, text="Show %",
+                                        bootstyle="primary-outline",
+                                        command=toggle_forecast_mode)
+        forecast_toggle_label = tb.Label(btn_frame, text="Select dataview", font=("Helvetica", 7, "bold"))
+        
+        def switch_chart(mode):
+            current_mode["value"] = mode
+            if mode == "usage_forecast":
+                forecast_toggle_label.pack(anchor="center", padx=4)
+                forecast_toggle_btn.pack(anchor="center", padx=4)
+            else:
+                forecast_toggle_btn.pack_forget()
+                forecast_toggle_label.pack_forget()
+            if mode == "usage_over_time":
+                details_frame.pack(fill="x", padx=10, pady=10)
+                details_label.pack(anchor="w")
+                self.details_text.pack(fill="x", pady=5)
+            else: 
+                details_frame.pack_forget()
+                self.details_text.pack_forget()
+                details_label.pack_forget()
+
+            draw_chart(mode)
+
         # ── Chart buttons 
         tb.Label(btn_frame, text="Select chart", font=("Helvetica", 11, "bold")).pack(side="left", padx=4)
         tb.Button(btn_frame, text="Usage Over Time", bootstyle="info-outline",
-                  command=lambda: draw_chart("usage_over_time")).pack(side="left", padx=4)
+                  command=lambda: switch_chart("usage_over_time")).pack(side="left", padx=4)
         tb.Button(btn_frame, text="Free Space",      bootstyle="info-outline",
-                  command=lambda: draw_chart("free_space")).pack(side="left", padx=4)
+                  command=lambda: switch_chart("free_space")).pack(side="left", padx=4)
         tb.Button(btn_frame, text="Usage %",         bootstyle="info-outline",
-                  command=lambda: draw_chart("usage_pct")).pack(side="left", padx=4)
-    
-        # Load default chart
+                  command=lambda: switch_chart("usage_pct")).pack(side="left", padx=4)
+        tb.Button(btn_frame, text="Usage Forecast",  bootstyle="info-outline",
+                  command=lambda: switch_chart("usage_forecast")).pack(side="left", padx=4)
+
         draw_chart("usage_over_time")
+        switch_chart("usage_over_time")
 
     def open_storage_summary(self):
         win = tb.Toplevel(self.root)

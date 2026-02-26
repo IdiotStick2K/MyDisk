@@ -1,5 +1,5 @@
 
-APP_VERSION = "Beta 0.3.0"
+APP_VERSION = "Beta 0.3.1"
 BUILD_TYPE = "release"
 PLATFORM = "windows"  # or detect with sys.platform
 

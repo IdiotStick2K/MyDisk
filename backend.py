@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import messagebox
 import ttkbootstrap as tb
 from ttkbootstrap.scrolled import ScrolledFrame   
+import subprocess
 
 
 if getattr(sys, "frozen", False):
@@ -34,7 +35,7 @@ FILES = {
     }
 }
 
-APP_VERSION = "Beta 0.2.6"
+APP_VERSION = "Beta 0.3.1"
 
 
 print("Base dir:", base_dir)
@@ -137,16 +138,41 @@ def list_drive_names():
     print(drives)
     return drives
 
+def clean_model_name(model):
+    if not model:
+        return "Unknown"
+    parts = model.strip().rsplit("-", 1)
+    return parts[0]
+
+def infer_manufacturer(model):
+    model_upper = model.upper()
+    if model_upper.startswith("ST"):                    return "Seagate"
+    if model_upper.startswith("WD"):                    return "Western Digital"
+    if model_upper.startswith("MQ") or model_upper.startswith("MK"): return "Toshiba"
+    if model_upper.startswith("HDS"):                   return "Hitachi"
+    if "SAMSUNG" in model_upper:                        return "Samsung"
+    if "KINGSTON" in model_upper:                       return "Kingston"
+    if "SANDISK" in model_upper:                        return "SanDisk"
+    if "CRUCIAL" or "CT" in model_upper:                return "Crucial"
+    if "INTEL" in model_upper:                          return "Intel"
+    if "TOSHIBA" in model_upper:                        return "Toshiba"
+    if "HITACHI" in model_upper:                        return "Hitachi"
+    return "Unknown"
+
 def list_drive_hardware():
     c = wmi.WMI()
     drives = []
     log_file = os.path.join(os.getcwd(), "data/drives.json")
+
+
     
     for disk in c.Win32_DiskDrive():
         # Try/except for fields that might be missing
         try:
+            model = getattr(disk, "Model", None) or "Unknown"
             drive_info = {
                 "model": getattr(disk, "Model", None),
+                "friendly_name":  f"{infer_manufacturer(model)} {clean_model_name(model)}",
                 "serial": getattr(disk, "SerialNumber", None),
                 "firmware": getattr(disk, "FirmwareRevision", None),
                 "interface": getattr(disk, "InterfaceType", None),
@@ -198,6 +224,7 @@ def get_drive_hardware():
         # Format each field for human readability
         formatted_drives.append({
             "Model": d.get("model", "Unknown"),
+            "Name": d.get("friendly_name", "Unknown"),
             "Serial": d.get("serial", "Unknown"),
             "Firmware": d.get("firmware", "N/A"),
             "Interface": d.get("interface", "N/A"),
@@ -698,3 +725,18 @@ def _save_logs(logs, log_file=None):
         log_file = os.path.join(os.getcwd(), "data", "storage_log.json")
     with open(log_file, "w") as f:
         json.dump(logs, f, indent=4)
+
+def linear_regression(x_vals, y_vals):
+    n = len(x_vals)
+    if n < 2:
+        return None, None 
+    sum_x  = sum(x_vals)
+    sum_y  = sum(y_vals)
+    sum_xy = sum(x * y for x, y in zip(x_vals, y_vals))
+    sum_xx = sum(x * x for x in x_vals)
+    denom  = (n * sum_xx - sum_x ** 2)
+    if denom == 0:
+        return None, None  
+    slope     = (n * sum_xy - sum_x * sum_y) / denom
+    intercept = (sum_y - slope * sum_x) / n
+    return slope, intercept
