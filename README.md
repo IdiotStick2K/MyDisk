@@ -15,6 +15,18 @@ If you download a .zip file from the releases section:
 -  From here you can either run the "Launcher.vbs' file or navigate to dist>MyDisk>>MyDisk.exe
 -  You can create your own shortcut for MyDisk.exe if you'd like.
 
+HOW TO BUNDLE SOURCECODE TO .exe
+Requirements: Python, pyinstaller, basic coding knowledge
+- If you do not have pyinstaller, open command prompt and run pip installer pyinstaller
+Bundling:
+- Clone the repository
+- Open a command prompt in the folder you cloned to
+- In command prompt, run "pyinstaller MyDisk.spec"
+- Move the art folder to dist>MyDisk
+- .exe file will be in dist>MyDisk>MyDisk.exe
+- (Optional) create a shortcut for MyDisk.exe
+If you do not have experience with bundling application or python in general, I recommend downloading the stand-alone releases from https://github.com/IdiotStick2K/MyDisk/releases
+
 INFORMATION REGARDING ANALYTICS TRACKING - READ
 You may see scripts like analytics.py, or supabase_client.py. I have intergrated a database into my application, that logs when somebody launches the app.
 I do not take any personal, or sensitive data, all that happens is your app version is taken from config.py as well as a timestamp and is sent to the database I have connected.
