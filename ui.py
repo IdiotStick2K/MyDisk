@@ -448,7 +448,7 @@ class App:
                                 days_away      = int(x_at_target - last_x)
                                 date_at_target = mdates.num2date(x_at_target)
                     
-                                if days_away > 365 * 3:  # more than 3 years out
+                                if days_away > 365:  # more than 1 year out
                                     far_future_rows.append((drive_name, t_label, days_away, date_at_target, slope))
                                 else:
                                     ax.axvline(x=date_at_target, color=t_color,
